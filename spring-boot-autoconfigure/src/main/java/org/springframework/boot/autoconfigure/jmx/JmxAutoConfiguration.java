@@ -18,9 +18,12 @@ package org.springframework.boot.autoconfigure.jmx;
 
 import javax.management.MBeanServer;
 
+import com.zaxxer.hikari.HikariDataSource;
+
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -38,6 +41,7 @@ import org.springframework.jmx.export.MBeanExporter;
 import org.springframework.jmx.export.annotation.AnnotationJmxAttributeSource;
 import org.springframework.jmx.export.annotation.AnnotationMBeanExporter;
 import org.springframework.jmx.export.naming.ObjectNamingStrategy;
+import org.springframework.jmx.support.JmxUtils;
 import org.springframework.jmx.support.MBeanServerFactoryBean;
 import org.springframework.jmx.support.RegistrationPolicy;
 import org.springframework.util.StringUtils;
@@ -72,7 +76,36 @@ public class JmxAutoConfiguration implements EnvironmentAware, BeanFactoryAware 
 	@Bean
 	@Primary
 	@ConditionalOnMissingBean(value = MBeanExporter.class, search = SearchStrategy.CURRENT)
+	@ConditionalOnClass(name = "com.zaxxer.hikari.HikariDataSource")
+	public AnnotationMBeanExporter hikariExcludeMBeanExporter(ObjectNamingStrategy namingStrategy) {
+		AnnotationMBeanExporter exporter = createAnnotationMBeanExporter(namingStrategy);
+
+		// Leave it to HikariCP
+		// https://github.com/brettwooldridge/HikariCP/wiki/MBean-(JMX)-Monitoring-and-Management
+		if (this.beanFactory instanceof ListableBeanFactory) {
+			String[] beanNames = ((ListableBeanFactory) this.beanFactory).getBeanNamesForType(HikariDataSource.class);
+			for (String beanName : beanNames) {
+				HikariDataSource dataSource = (HikariDataSource) this.beanFactory.getBean(beanName);
+				if (dataSource != null && JmxUtils.isMBean(dataSource.getClass())) {
+					exporter.addExcludedBean(beanName);
+					if (!dataSource.isRegisterMbeans()) {
+						dataSource.setRegisterMbeans(true);
+						dataSource.setPoolName(beanName);
+					}
+				}
+			}
+		}
+
+		return exporter;
+	}
+
+	@Bean
+	@ConditionalOnMissingBean(value = MBeanExporter.class, search = SearchStrategy.CURRENT)
 	public AnnotationMBeanExporter mbeanExporter(ObjectNamingStrategy namingStrategy) {
+		return createAnnotationMBeanExporter(namingStrategy);
+	}
+
+	private AnnotationMBeanExporter createAnnotationMBeanExporter(ObjectNamingStrategy namingStrategy) {
 		AnnotationMBeanExporter exporter = new AnnotationMBeanExporter();
 		exporter.setRegistrationPolicy(RegistrationPolicy.FAIL_ON_EXISTING);
 		exporter.setNamingStrategy(namingStrategy);
