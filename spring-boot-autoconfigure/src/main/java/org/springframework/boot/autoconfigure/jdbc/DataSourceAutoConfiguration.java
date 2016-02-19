@@ -21,6 +21,8 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 import javax.sql.XADataSource;
 
+import com.zaxxer.hikari.HikariDataSource;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.tomcat.jdbc.pool.DataSourceProxy;
@@ -53,6 +55,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.jmx.export.MBeanExporter;
+import org.springframework.jmx.support.JmxUtils;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for {@link DataSource}.
@@ -149,6 +153,36 @@ public class DataSourceAutoConfiguration {
 			return null;
 		}
 
+	}
+
+	@Configuration
+	@ConditionalOnProperty(prefix = "spring.datasource", name = "jmx-enabled")
+	@ConditionalOnClass(name = "com.zaxxer.hikari.HikariDataSource")
+	@Conditional(DataSourceAutoConfiguration.DataSourceAvailableCondition.class)
+	@ConditionalOnMissingBean(name = "dataSourceMBean")
+	protected static class HikariDataSourceJmxConfiguration {
+
+		@Bean
+		public Object dataSourceMBean(DataSource dataSource, MBeanExporter mbeanExporter) {
+			if (dataSource instanceof HikariDataSource) {
+				// Entrust to HikariCP
+				HikariDataSource hikariDataSource = (HikariDataSource) dataSource;
+				hikariDataSource.setRegisterMbeans(true);
+				hikariDataSource.setPoolName("dataSource");
+				excludeMBeanIfNecessary(mbeanExporter, dataSource, "dataSource", "dataSourceMBean");
+
+				return hikariDataSource;
+			}
+			return null;
+		}
+
+		private void excludeMBeanIfNecessary(MBeanExporter mbeanExporter, Object candidate, String... beanNames) {
+			if (mbeanExporter != null && JmxUtils.isMBean(candidate.getClass())) {
+				for (String beanName : beanNames) {
+					mbeanExporter.addExcludedBean(beanName);
+				}
+			}
+		}
 	}
 
 	/**
