@@ -18,6 +18,7 @@ package org.springframework.boot.autoconfigure.jdbc;
 
 import java.sql.SQLException;
 
+import javax.annotation.PostConstruct;
 import javax.sql.DataSource;
 import javax.sql.XADataSource;
 
@@ -162,24 +163,24 @@ public class DataSourceAutoConfiguration {
 	@ConditionalOnMissingBean(name = "dataSourceMBean")
 	protected static class HikariDataSourceJmxConfiguration {
 
-		@Bean
-		public Object dataSourceMBean(DataSource dataSource, MBeanExporter mbeanExporter) {
-			if (dataSource instanceof HikariDataSource) {
-				// Entrust to HikariCP
-				HikariDataSource hikariDataSource = (HikariDataSource) dataSource;
-				hikariDataSource.setRegisterMbeans(true);
-				hikariDataSource.setPoolName("dataSource");
-				excludeMBeanIfNecessary(mbeanExporter, dataSource, "dataSource", "dataSourceMBean");
+		@Autowired
+		private HikariDataSource dataSource;
 
-				return hikariDataSource;
-			}
-			return null;
+		@Autowired(required = false)
+		private MBeanExporter mbeanExporter;
+
+		@PostConstruct
+		public void init() {
+			// Entrust to HikariCP
+			this.dataSource.setRegisterMbeans(true);
+			this.dataSource.setPoolName("dataSourceMBean");
+			excludeMBeanIfNecessary("dataSourceMBean", "dataSource");
 		}
 
-		private void excludeMBeanIfNecessary(MBeanExporter mbeanExporter, Object candidate, String... beanNames) {
-			if (mbeanExporter != null && JmxUtils.isMBean(candidate.getClass())) {
+		private void excludeMBeanIfNecessary(String... beanNames) {
+			if (this.mbeanExporter != null && JmxUtils.isMBean(this.dataSource.getClass())) {
 				for (String beanName : beanNames) {
-					mbeanExporter.addExcludedBean(beanName);
+					this.mbeanExporter.addExcludedBean(beanName);
 				}
 			}
 		}
