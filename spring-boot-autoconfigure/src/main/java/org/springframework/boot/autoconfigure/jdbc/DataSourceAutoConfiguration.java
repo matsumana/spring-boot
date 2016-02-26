@@ -29,6 +29,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.tomcat.jdbc.pool.DataSourceProxy;
 
 import org.springframework.beans.factory.BeanFactoryUtils;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -166,22 +167,26 @@ public class DataSourceAutoConfiguration {
 		@Autowired
 		private HikariDataSource dataSource;
 
+		@Autowired
+		ListableBeanFactory beanFactory;
+
 		@Autowired(required = false)
 		private MBeanExporter mbeanExporter;
 
 		@PostConstruct
 		public void init() {
 			// Entrust to HikariCP
-			this.dataSource.setRegisterMbeans(true);
-			this.dataSource.setPoolName("dataSourceMBean");
-			excludeMBeanIfNecessary("dataSourceMBean", "dataSource");
+			String[] beanNames = this.beanFactory.getBeanNamesForType(HikariDataSource.class);
+			for (String beanName : beanNames) {
+				this.dataSource.setRegisterMbeans(true);
+				this.dataSource.setPoolName(beanName);
+				excludeMBeanIfNecessary(beanName);
+			}
 		}
 
-		private void excludeMBeanIfNecessary(String... beanNames) {
+		private void excludeMBeanIfNecessary(String beanName) {
 			if (this.mbeanExporter != null && JmxUtils.isMBean(this.dataSource.getClass())) {
-				for (String beanName : beanNames) {
-					this.mbeanExporter.addExcludedBean(beanName);
-				}
+				this.mbeanExporter.addExcludedBean(beanName);
 			}
 		}
 	}
